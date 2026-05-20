@@ -95,7 +95,7 @@ if not REDMINE_URL:
         "REDMINE_URL not set. "
         "Please create a .env file in your working directory with REDMINE_URL defined."
     )
-elif REDMINE_AUTH_MODE != "oauth" and not (
+elif REDMINE_AUTH_MODE not in {"oauth", "fastmcp-oauth-proxy"} and not (
     REDMINE_API_KEY or (REDMINE_USERNAME and REDMINE_PASSWORD)
 ):
     logger.warning(
@@ -169,6 +169,12 @@ def _get_redmine_client() -> Redmine:
     from .oauth_middleware import current_redmine_token
 
     token = current_redmine_token.get()
+    if not token and g["REDMINE_AUTH_MODE"] == "fastmcp-oauth-proxy":
+        from mcp.server.auth.middleware.auth_context import get_access_token
+
+        access_token = get_access_token()
+        if access_token is not None:
+            token = access_token.token
 
     if token:
         # OAuth mode: per-request client with Bearer token (cannot be cached)
