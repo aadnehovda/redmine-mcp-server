@@ -14,6 +14,9 @@ from pathlib import Path
 import httpx
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.auth.oauth_proxy import OAuthProxy
+from key_value.aio.protocols import AsyncKeyValue
+from key_value.aio.stores.redis import RedisStore
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 from .oauth_scopes import advertised_scopes
 
@@ -35,6 +38,28 @@ def _split_scopes(value: str | None) -> list[str]:
         return []
     normalized = value.replace(",", " ")
     return [scope for scope in normalized.split() if scope]
+
+
+def _build_client_storage(
+    *, client_secret: str | None, jwt_signing_key: str | None
+) -> AsyncKeyValue | None:
+    redis_url = os.getenv("REDMINE_MCP_REDIS_URL")
+    if not redis_url:
+        return None
+
+    source_material = jwt_signing_key or client_secret
+    if not source_material:
+        raise RuntimeError(
+            "REDMINE_MCP_REDIS_URL requires REDMINE_MCP_JWT_SIGNING_KEY[_FILE] "
+            "or REDMINE_OAUTH_CLIENT_SECRET[_FILE] for encrypted OAuth storage."
+        )
+
+    return FernetEncryptionWrapper(
+        key_value=RedisStore(url=redis_url),
+        source_material=source_material,
+        salt="redmine-mcp-oauth-proxy-storage",
+        raise_on_decryption_error=False,
+    )
 
 
 class RedmineTokenVerifier(TokenVerifier):
@@ -117,9 +142,6 @@ def build_redmine_oauth_proxy() -> OAuthProxy:
         upstream_revocation_endpoint=f"{redmine_url}/oauth/revoke",
         token_verifier=verifier,
         base_url=base_url,
-        redirect_path=os.getenv(
-            "REDMINE_MCP_PROXY_REDIRECT_PATH", "/oauth/dcr/callback"
-        ),
         allowed_client_redirect_uris=_split_scopes(
             os.getenv("REDMINE_MCP_ALLOWED_CLIENT_REDIRECT_URIS")
         )
@@ -131,6 +153,10 @@ def build_redmine_oauth_proxy() -> OAuthProxy:
         ),
         token_endpoint_auth_method=os.getenv(
             "REDMINE_OAUTH_TOKEN_ENDPOINT_AUTH_METHOD", "client_secret_post"
+        ),
+        client_storage=_build_client_storage(
+            client_secret=client_secret,
+            jwt_signing_key=jwt_signing_key,
         ),
         require_authorization_consent=os.getenv(
             "REDMINE_MCP_PROXY_CONSENT", "external"
