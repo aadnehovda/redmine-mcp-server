@@ -71,6 +71,7 @@ async def oauth_authorization_server(request: Request):
             "issuer": base_url,
             "authorization_endpoint": f"{redmine_url}/oauth/authorize",
             "token_endpoint": f"{redmine_url}/oauth/token",
+            "registration_endpoint": f"{redmine_url}/oauth/registration",
             "revocation_endpoint": f"{redmine_url}/oauth/revoke",
             "response_types_supported": ["code"],
             "grant_types_supported": [
@@ -173,6 +174,9 @@ async def revoke_token(request: Request):
 # the bypass surface.
 if REDMINE_AUTH_MODE == "oauth":
     mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])(
+        oauth_authorization_server
+    )
+    mcp.custom_route("/.well-known/oauth-authorization-server/mcp", methods=["GET"])(
         oauth_authorization_server
     )
     mcp.custom_route("/revoke", methods=["POST"])(revoke_token)

@@ -40,6 +40,9 @@ def oauth_app(monkeypatch):
     local_mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])(
         main_mod.oauth_authorization_server
     )
+    local_mcp.custom_route("/.well-known/oauth-authorization-server/mcp", methods=["GET"])(
+        main_mod.oauth_authorization_server
+    )
     local_mcp.custom_route("/revoke", methods=["POST"])(main_mod.revoke_token)
 
     return local_mcp.http_app(stateless_http=True)
@@ -64,7 +67,6 @@ async def test_protected_resource_suffix_path_returns_200(oauth_app):
     [
         "/.well-known/oauth-protected-resource",
         "/mcp/.well-known/oauth-protected-resource",
-        "/.well-known/oauth-authorization-server/mcp",
         "/mcp/.well-known/oauth-authorization-server",
     ],
 )
@@ -88,7 +90,22 @@ async def test_authorization_server_canonical_path_returns_200(oauth_app):
     body = r.json()
     assert body["authorization_endpoint"] == "https://r.example.com/oauth/authorize"
     assert body["token_endpoint"] == "https://r.example.com/oauth/token"
+    assert body["registration_endpoint"] == "https://r.example.com/oauth/registration"
     assert body["revocation_endpoint"] == "https://r.example.com/oauth/revoke"
+
+
+@pytest.mark.asyncio
+async def test_authorization_server_suffix_path_returns_mcp_scopes(oauth_app):
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=oauth_app), base_url="http://test"
+    ) as client:
+        r = await client.get("/.well-known/oauth-authorization-server/mcp")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authorization_endpoint"] == "https://r.example.com/oauth/authorize"
+    assert body["registration_endpoint"] == "https://r.example.com/oauth/registration"
+    assert "admin" not in body["scopes_supported"]
 
 
 @pytest.mark.asyncio
