@@ -40,6 +40,8 @@ def oauth_app(monkeypatch):
             "token_endpoint": f"{redmine_url}/oauth/token",
             "registration_endpoint": f"{redmine_url}/oauth/registration",
             "revocation_endpoint": f"{redmine_url}/oauth/revoke",
+            "jwks_uri": f"{redmine_url}/oauth/discovery/keys",
+            "subject_types_supported": ["public"],
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
@@ -108,23 +110,16 @@ async def test_authorization_server_suffix_path_returns_mcp_scopes(oauth_app):
     assert body["token_endpoint"] == "https://r.example.com/oauth/token"
     assert body["registration_endpoint"] == "https://r.example.com/oauth/registration"
     assert body["revocation_endpoint"] == "https://r.example.com/oauth/revoke"
+    assert body["jwks_uri"] == "https://r.example.com/oauth/discovery/keys"
+    assert body["subject_types_supported"] == ["public"]
     assert "admin" not in body["scopes_supported"]
 
 
 @pytest.mark.asyncio
-async def test_registration_endpoint_is_only_mirrored_when_advertised(monkeypatch):
-    monkeypatch.setenv("REDMINE_URL", "https://r.example.com")
-
+async def test_registration_endpoint_is_omitted_when_falling_back():
     from redmine_mcp_server import main as main_mod
 
-    metadata = main_mod.filter_authorization_server_metadata(
-        {
-            "issuer": "https://r.example.com",
-            "authorization_endpoint": "https://r.example.com/oauth/authorize",
-            "token_endpoint": "https://r.example.com/oauth/token",
-        },
-        "https://r.example.com",
-    )
+    metadata = main_mod.fallback_authorization_server_metadata("https://r.example.com")
 
     assert "registration_endpoint" not in metadata
 

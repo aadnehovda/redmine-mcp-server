@@ -93,37 +93,9 @@ async def fetch_authorization_server_metadata(redmine_url: str) -> dict:
                     e,
                 )
                 continue
-            return filter_authorization_server_metadata(body, redmine_url)
+            return body
 
     return fallback_authorization_server_metadata(redmine_url)
-
-
-def filter_authorization_server_metadata(metadata: dict, redmine_url: str) -> dict:
-    """Keep AS metadata fields relevant to OAuth clients.
-
-    ``registration_endpoint`` is intentionally copied only when the real AS
-    advertises it; the MCP server must not invent DCR support.
-    """
-    defaults = fallback_authorization_server_metadata(redmine_url)
-    keys = (
-        "issuer",
-        "authorization_endpoint",
-        "token_endpoint",
-        "registration_endpoint",
-        "revocation_endpoint",
-        "introspection_endpoint",
-        "response_types_supported",
-        "response_modes_supported",
-        "grant_types_supported",
-        "code_challenge_methods_supported",
-        "token_endpoint_auth_methods_supported",
-        "revocation_endpoint_auth_methods_supported",
-        "introspection_endpoint_auth_methods_supported",
-    )
-    filtered = {key: metadata[key] for key in keys if key in metadata}
-    for key, value in defaults.items():
-        filtered.setdefault(key, value)
-    return filtered
 
 
 def fallback_authorization_server_metadata(redmine_url: str) -> dict:
