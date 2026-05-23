@@ -55,37 +55,95 @@ def get_version() -> str:
 async def oauth_authorization_server(request: Request):
     """RFC 8414 — Authorization Server Metadata.
 
-    Redmine uses Doorkeeper but does not serve this discovery document itself.
-    We serve it manually, pointing to Redmine's real Doorkeeper endpoints.
+    Return path-scoped metadata for MCP clients that derive Authorization
+    Server Metadata from the MCP resource path.
 
-    Env vars are read at request time (rather than module-import time) so
-    that the handler responds to runtime configuration changes and is
-    cleanly testable without module reloads.
+    The MCP server is not the authorization server, so endpoint capability
+    metadata is mirrored from Redmine's real discovery document when present.
+    MCP-specific scopes are then applied to keep clients from requesting
+    broad Redmine-wide scopes for this protected resource.
     """
     redmine_url = (os.environ.get("REDMINE_URL", "") or "").rstrip("/")
-    base_url = (
-        os.environ.get("REDMINE_MCP_BASE_URL", "http://localhost:3040") or ""
-    ).rstrip("/")
-    return JSONResponse(
-        {
-            "issuer": base_url,
-            "authorization_endpoint": f"{redmine_url}/oauth/authorize",
-            "token_endpoint": f"{redmine_url}/oauth/token",
-            "registration_endpoint": f"{redmine_url}/oauth/registration",
-            "revocation_endpoint": f"{redmine_url}/oauth/revoke",
-            "response_types_supported": ["code"],
-            "grant_types_supported": [
-                "authorization_code",
-                "refresh_token",
-            ],
-            "code_challenge_methods_supported": ["S256"],
-            "token_endpoint_auth_methods_supported": [
-                "client_secret_post",
-                "client_secret_basic",
-            ],
-            "scopes_supported": advertised_scopes(),
-        }
+    metadata = await fetch_authorization_server_metadata(redmine_url)
+    metadata["scopes_supported"] = advertised_scopes()
+    return JSONResponse(metadata)
+
+
+async def fetch_authorization_server_metadata(redmine_url: str) -> dict:
+    """Fetch Redmine's real OAuth/OIDC discovery metadata.
+
+    If discovery is unavailable, fall back to the standard Doorkeeper endpoint
+    paths without advertising optional capabilities such as DCR.
+    """
+    discovery_paths = (
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/openid-configuration",
     )
+    async with httpx.AsyncClient(timeout=10) as client:
+        for path in discovery_paths:
+            try:
+                response = await client.get(f"{redmine_url}{path}")
+                response.raise_for_status()
+                body = response.json()
+            except (httpx.HTTPError, ValueError) as e:
+                logger.debug(
+                    "Failed to fetch AS metadata from %s%s: %s",
+                    redmine_url,
+                    path,
+                    e,
+                )
+                continue
+            return filter_authorization_server_metadata(body, redmine_url)
+
+    return fallback_authorization_server_metadata(redmine_url)
+
+
+def filter_authorization_server_metadata(metadata: dict, redmine_url: str) -> dict:
+    """Keep AS metadata fields relevant to OAuth clients.
+
+    ``registration_endpoint`` is intentionally copied only when the real AS
+    advertises it; the MCP server must not invent DCR support.
+    """
+    defaults = fallback_authorization_server_metadata(redmine_url)
+    keys = (
+        "issuer",
+        "authorization_endpoint",
+        "token_endpoint",
+        "registration_endpoint",
+        "revocation_endpoint",
+        "introspection_endpoint",
+        "response_types_supported",
+        "response_modes_supported",
+        "grant_types_supported",
+        "code_challenge_methods_supported",
+        "token_endpoint_auth_methods_supported",
+        "revocation_endpoint_auth_methods_supported",
+        "introspection_endpoint_auth_methods_supported",
+    )
+    filtered = {key: metadata[key] for key in keys if key in metadata}
+    for key, value in defaults.items():
+        filtered.setdefault(key, value)
+    return filtered
+
+
+def fallback_authorization_server_metadata(redmine_url: str) -> dict:
+    """Return conservative Doorkeeper defaults without optional DCR."""
+    return {
+        "issuer": redmine_url,
+        "authorization_endpoint": f"{redmine_url}/oauth/authorize",
+        "token_endpoint": f"{redmine_url}/oauth/token",
+        "revocation_endpoint": f"{redmine_url}/oauth/revoke",
+        "response_types_supported": ["code"],
+        "grant_types_supported": [
+            "authorization_code",
+            "refresh_token",
+        ],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": [
+            "client_secret_post",
+            "client_secret_basic",
+        ],
+    }
 
 
 async def revoke_token(request: Request):
@@ -173,9 +231,6 @@ async def revoke_token(request: Request):
 # no Starlette middleware doing auth, so custom_route no longer represents
 # the bypass surface.
 if REDMINE_AUTH_MODE == "oauth":
-    mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])(
-        oauth_authorization_server
-    )
     mcp.custom_route("/.well-known/oauth-authorization-server/mcp", methods=["GET"])(
         oauth_authorization_server
     )
