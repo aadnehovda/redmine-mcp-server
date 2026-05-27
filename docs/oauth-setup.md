@@ -79,6 +79,7 @@ REDMINE_AUTH_MODE=oauth
 REDMINE_URL=https://redmine.example.com
 REDMINE_MCP_BASE_URL=https://mcp.example.com       # public OAuth/MCP app base
 # REDMINE_MCP_PATH=/mcp                            # public MCP endpoint is base + path
+# REDMINE_MCP_TRUST_PROXY_HEADERS=false            # enable only behind a trusted reverse proxy
 
 # Introspection client (from Step 2)
 REDMINE_INTROSPECT_CLIENT_ID=<UID from Redmine>
@@ -89,6 +90,12 @@ REDMINE_INTROSPECT_CLIENT_SECRET=<Secret from Redmine>
 ```
 
 Set these in `.env` (local) or `.env.docker` (Docker). Legacy credentials are not needed in OAuth mode.
+
+When `REDMINE_MCP_TRUST_PROXY_HEADERS=true`, OAuth discovery documents and
+`WWW-Authenticate` challenges are rewritten from trusted `Forwarded`,
+`X-Forwarded-Proto`, `X-Forwarded-Host`, and `X-Forwarded-Prefix` headers.
+Route mounting still follows `REDMINE_MCP_MOUNT_PREFIX` and
+`REDMINE_MCP_PATH`.
 
 **Startup behavior:** When `REDMINE_AUTH_MODE=oauth` is set, the server fails fast at startup if `REDMINE_INTROSPECT_CLIENT_ID` or `REDMINE_INTROSPECT_CLIENT_SECRET` is missing — better to surface the misconfiguration immediately than to return 401 on every request.
 

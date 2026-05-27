@@ -189,3 +189,56 @@ async def test_authenticated_app_supports_mcp_path_none(monkeypatch, tmp_path):
         'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource/mcp'
         in mcp_post_slash.headers["www-authenticate"]
     )
+
+
+@pytest.mark.asyncio
+async def test_authenticated_app_rewrites_metadata_from_proxy_headers(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("REDMINE_URL", "https://redmine.example")
+    monkeypatch.setenv("REDMINE_MCP_BASE_URL", "https://internal.example")
+    monkeypatch.setenv("REDMINE_MCP_TRUST_PROXY_HEADERS", "true")
+    monkeypatch.setenv("REDMINE_OAUTH_CLIENT_ID", "upstream-client")
+    monkeypatch.setenv("REDMINE_OAUTH_CLIENT_SECRET", "upstream-secret")
+    monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_ID", "introspect-client")
+    monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_SECRET", "introspect-secret")
+    monkeypatch.setenv("REDMINE_MCP_JWT_SIGNING_KEY", "stable-test-signing-key")
+    monkeypatch.setattr(settings, "home", tmp_path)
+
+    from redmine_mcp_server.main import build_authenticated_app
+
+    auth = build_oauth_proxy()
+    app = build_authenticated_app(
+        FastMCP("oauth_proxy_test", auth=auth), auth, "oauth-proxy"
+    )
+    headers = {
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "public.example",
+        "x-forwarded-prefix": "/somepath",
+    }
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://internal.example"
+    ) as client:
+        root_as = await client.get(
+            "/.well-known/oauth-authorization-server", headers=headers
+        )
+        prm = await client.get(
+            "/.well-known/oauth-protected-resource/mcp", headers=headers
+        )
+        mcp_post = await client.post("/mcp", json={}, headers=headers)
+
+    as_body = root_as.json()
+    prm_body = prm.json()
+    assert as_body["issuer"] == "https://public.example/somepath/"
+    assert (
+        as_body["authorization_endpoint"]
+        == "https://public.example/somepath/authorize"
+    )
+    assert prm_body["authorization_servers"] == [
+        "https://public.example/somepath/"
+    ]
+    assert (
+        'resource_metadata="https://public.example/.well-known/oauth-protected-resource/somepath/mcp"'
+        in mcp_post.headers["www-authenticate"]
+    )

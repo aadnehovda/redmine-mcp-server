@@ -39,6 +39,10 @@ from ._mount import (  # noqa: E402
     mcp_path_for_http_app,
     mcp_path_for_metadata,
 )
+from ._proxy_headers import (  # noqa: E402
+    ForwardedOAuthMetadataMiddleware,
+    trust_proxy_headers,
+)
 from .oauth_scopes import advertised_scopes  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -203,7 +207,13 @@ def build_authenticated_app(mcp_instance, auth_provider, auth_mode: str):
             Mount(mcp_mount_prefix(), app=mcp_app),
         ]
     )
-    return Starlette(routes=routes, lifespan=mcp_app.lifespan)
+    middleware = []
+    if trust_proxy_headers():
+        from starlette.middleware import Middleware
+
+        middleware.append(Middleware(ForwardedOAuthMetadataMiddleware))
+
+    return Starlette(routes=routes, middleware=middleware, lifespan=mcp_app.lifespan)
 
 
 def build_app():
