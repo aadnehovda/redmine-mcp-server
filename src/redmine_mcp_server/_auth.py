@@ -3,8 +3,8 @@
 Builds a RemoteAuthProvider that:
   - Validates opaque OAuth tokens via Doorkeeper RFC 7662 introspection
     (POST {REDMINE_URL}/oauth/introspect).
-  - Mounts RFC 9728 protected-resource metadata at
-    /.well-known/oauth-protected-resource/mcp.
+  - Mounts RFC 9728 protected-resource metadata under the configured
+    public base URL path plus REDMINE_MCP_PATH.
   - Advertises scopes_supported from oauth_scopes.advertised_scopes()
     (filtered when REDMINE_MCP_READ_ONLY=true).
 
@@ -23,6 +23,7 @@ from fastmcp.server.auth.providers.introspection import IntrospectionTokenVerifi
 from pydantic import AnyHttpUrl
 
 from ._env import require_introspection_credentials
+from ._mount import mcp_base_url
 from .oauth_scopes import advertised_scopes
 
 
@@ -33,9 +34,7 @@ def build_remote_auth() -> RemoteAuthProvider:
     fail fast at boot rather than 401 every request.
     """
     redmine_url = (os.environ.get("REDMINE_URL") or "").rstrip("/")
-    base_url = (
-        os.environ.get("REDMINE_MCP_BASE_URL") or "http://localhost:3040"
-    ).rstrip("/")
+    base_url = mcp_base_url()
     if not redmine_url:
         raise RuntimeError(
             "REDMINE_URL must be set for OAuth mode. See docs/oauth-setup.md."

@@ -135,3 +135,37 @@ async def test_scope_sources_filtered_consistently_in_read_only_mode(monkeypatch
     for write_scope in WRITE_SCOPES:
         assert write_scope not in pr["scopes_supported"]
         assert write_scope not in asm["scopes_supported"]
+
+
+@pytest.mark.asyncio
+async def test_authenticated_app_mounts_remote_auth_under_mcp(monkeypatch):
+    monkeypatch.setenv("REDMINE_URL", "https://r.example.com")
+    monkeypatch.setenv("REDMINE_MCP_BASE_URL", "https://mcp.example")
+    monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_ID", "cid")
+    monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_SECRET", "csec")
+    monkeypatch.delenv("REDMINE_MCP_READ_ONLY", raising=False)
+
+    from redmine_mcp_server import _auth, oauth_scopes
+    from redmine_mcp_server import main as main_mod
+
+    importlib.reload(oauth_scopes)
+    importlib.reload(_auth)
+
+    auth_provider = _auth.build_remote_auth()
+    local_mcp = FastMCP("remote_auth_mount_test", auth=auth_provider)
+    app = main_mod.build_authenticated_app(local_mcp, auth_provider, "oauth")
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://mcp.example"
+    ) as client:
+        root_prm = await client.get("/.well-known/oauth-protected-resource")
+        prm = await client.get("/.well-known/oauth-protected-resource/mcp")
+        mounted_prm = await client.get("/mcp/.well-known/oauth-protected-resource")
+        asm = await client.get("/.well-known/oauth-authorization-server")
+        mcp_get = await client.get("/mcp")
+
+    assert root_prm.status_code == 404
+    assert prm.status_code == 200
+    assert mounted_prm.status_code == 404
+    assert asm.status_code == 200
+    assert mcp_get.status_code == 405

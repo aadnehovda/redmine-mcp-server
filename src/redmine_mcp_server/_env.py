@@ -1,6 +1,7 @@
 """Environment-variable accessor helpers."""
 
 import os
+from pathlib import Path
 
 
 def _is_true_env(var_name: str, default: str = "false") -> bool:
@@ -59,6 +60,19 @@ def _get_int_env(var_name: str, default: int) -> int:
         return default
 
 
+def get_secret_env(var_name: str, file_var_name: str | None = None) -> str | None:
+    """Return a secret from an env var or a Docker/Kubernetes-style file env var."""
+    value = os.getenv(var_name)
+    if value:
+        return value
+
+    file_name = os.getenv(file_var_name or f"{var_name}_FILE")
+    if not file_name:
+        return None
+
+    return Path(file_name).read_text(encoding="utf-8").strip()
+
+
 def get_introspection_credentials() -> tuple[str | None, str | None]:
     """Return (client_id, client_secret) for the Doorkeeper introspection client.
 
@@ -67,7 +81,7 @@ def get_introspection_credentials() -> tuple[str | None, str | None]:
     should use require_introspection_credentials().
     """
     client_id = os.getenv("REDMINE_INTROSPECT_CLIENT_ID") or None
-    client_secret = os.getenv("REDMINE_INTROSPECT_CLIENT_SECRET") or None
+    client_secret = get_secret_env("REDMINE_INTROSPECT_CLIENT_SECRET")
     return client_id, client_secret
 
 

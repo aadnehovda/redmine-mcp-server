@@ -103,7 +103,9 @@ The server runs on `http://localhost:8000` with the MCP endpoint at `/mcp`, heal
 | `REDMINE_API_KEY` | Yes† | – | API key (legacy mode only) |
 | `REDMINE_USERNAME` | Yes† | – | Username for basic auth (legacy mode only) |
 | `REDMINE_PASSWORD` | Yes† | – | Password for basic auth (legacy mode only) |
-| `REDMINE_MCP_BASE_URL` | Yes‡ | `http://localhost:3040` | Public base URL of this server, no trailing slash (OAuth mode only) |
+| `REDMINE_MCP_BASE_URL` | Yes‡ | `http://localhost:3040` | Public base URL of the mounted OAuth/MCP app, no trailing slash (OAuth mode only) |
+| `REDMINE_MCP_PATH` | No | `/mcp` | MCP transport path inside the mounted app. Set to `none` to serve MCP at the mounted app root. |
+| `REDMINE_MCP_MOUNT_PREFIX` | No | `/` | Internal ASGI mount prefix. Set this when a reverse proxy preserves a path prefix before forwarding to the app. |
 | `REDMINE_INTROSPECT_CLIENT_ID` | Yes‡ | – | Doorkeeper OAuth client ID used by the MCP server to introspect Bearer tokens (RFC 7662). Register a confidential OAuth app in Redmine with `protected_resource?` permission — see [`docs/oauth-setup.md`](docs/oauth-setup.md) Step 2. |
 | `REDMINE_INTROSPECT_CLIENT_SECRET` | Yes‡ | – | Secret for the introspection client |
 | `HEALTH_INTROSPECTION_TTL_SECONDS` | No | `30` | TTL (seconds) for the `/health` Doorkeeper introspection probe cache. Set to `0` to disable caching. |
@@ -228,7 +230,8 @@ Each MCP request carries its own `Authorization: Bearer <token>` header. Since v
 ```bash
 REDMINE_AUTH_MODE=oauth
 REDMINE_URL=https://redmine.example.com
-REDMINE_MCP_BASE_URL=https://redmine-mcp.example.com   # public URL of this server
+REDMINE_MCP_BASE_URL=https://redmine-mcp.example.com       # public OAuth/MCP app base
+# REDMINE_MCP_PATH=/mcp                                   # public MCP endpoint is base + path
 
 # Introspection client (register a confidential OAuth app in Redmine; see docs/oauth-setup.md)
 REDMINE_INTROSPECT_CLIENT_ID=...
@@ -239,8 +242,8 @@ In OAuth mode the server also exposes OAuth2 discovery and token management endp
 
 | Endpoint | Standard | Purpose |
 |----------|----------|---------|
-| `/.well-known/oauth-protected-resource/mcp` | RFC 9728 §3.1 | Tells clients where to find the authorization server (mounted by FastMCP `RemoteAuthProvider`) |
-| `/.well-known/oauth-authorization-server/mcp` | RFC 8414 | Advertises Redmine's Doorkeeper OAuth endpoints, scoped to this MCP resource |
+| `/.well-known/oauth-protected-resource/mcp` | RFC 9728 §3.1 | Tells clients where to find the authorization server. The suffix is `REDMINE_MCP_BASE_URL`'s path plus `REDMINE_MCP_PATH`. |
+| `/.well-known/oauth-authorization-server` | RFC 8414 | Advertises Redmine's Doorkeeper OAuth endpoints. If `REDMINE_MCP_BASE_URL` has a path, the same path is appended. |
 | `POST /revoke` | RFC 7009 | Revokes an OAuth2 token (proxies to Redmine's `/oauth/revoke`) |
 
 Redmine uses the [Doorkeeper](https://github.com/doorkeeper-gem/doorkeeper) gem for OAuth2 but does not serve the RFC 8414 discovery document itself. This server serves path-scoped metadata on Redmine's behalf, pointing to Redmine's real `/oauth/authorize`, `/oauth/token`, and `/oauth/revoke` endpoints.

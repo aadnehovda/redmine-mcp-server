@@ -77,7 +77,8 @@ Common failure modes:
 ```bash
 REDMINE_AUTH_MODE=oauth
 REDMINE_URL=https://redmine.example.com
-REDMINE_MCP_BASE_URL=https://mcp.example.com   # public URL of this server
+REDMINE_MCP_BASE_URL=https://mcp.example.com       # public OAuth/MCP app base
+# REDMINE_MCP_PATH=/mcp                            # public MCP endpoint is base + path
 
 # Introspection client (from Step 2)
 REDMINE_INTROSPECT_CLIENT_ID=<UID from Redmine>
@@ -107,7 +108,7 @@ Verify discovery endpoints:
 curl http://localhost:8000/.well-known/oauth-protected-resource/mcp
 
 # RFC 8414 authorization-server metadata (mirror of Redmine's Doorkeeper)
-curl http://localhost:8000/.well-known/oauth-authorization-server/mcp
+curl http://localhost:8000/.well-known/oauth-authorization-server
 
 # /health probes Doorkeeper introspection in OAuth mode
 curl http://localhost:8000/health
@@ -158,7 +159,7 @@ Set this in Redmine's OAuth app (Step 1) to match your client:
 | Every MCP call returns 401 | Introspection client not authorized to introspect tokens of other apps | Re-check Step 2b's `allow_token_introspection` block in `30-redmine.rb`. Confirm the introspection client is **Confidential: Yes**. |
 | `/health` returns `status: "degraded"` | Introspection endpoint unreachable | Check `REDMINE_URL`, introspection credentials, and Doorkeeper's `allow_token_introspection` setting |
 | Server fails to start: "Missing env var(s): REDMINE_INTROSPECT_CLIENT_ID..." | OAuth mode requires introspection creds | Register the introspection client per Step 2, set `REDMINE_INTROSPECT_CLIENT_ID` / `_SECRET` |
-| Discovery endpoints 404 | Not in OAuth mode, or hitting wrong path | Ensure `REDMINE_AUTH_MODE=oauth`. Note: the canonical paths are `/.well-known/oauth-protected-resource/mcp` (suffix-scoped per RFC 9728 §3.1) and `/.well-known/oauth-authorization-server/mcp` |
+| Discovery endpoints 404 | Not in OAuth mode, or hitting wrong path | Ensure `REDMINE_AUTH_MODE=oauth`. The protected-resource metadata path is `REDMINE_MCP_BASE_URL`'s path plus `REDMINE_MCP_PATH`; the authorization-server metadata path is `REDMINE_MCP_BASE_URL`'s path. With defaults, these are `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server`. |
 | Token works in Redmine but not MCP | Wrong `REDMINE_URL` | In Docker, use internal hostname (e.g., `http://redmine:3000`) |
 | "Applications" menu missing | Redmine too old | Requires Redmine 6.1+ |
 

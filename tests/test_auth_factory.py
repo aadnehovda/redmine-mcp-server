@@ -81,6 +81,21 @@ class TestBuildRemoteAuth:
         with pytest.raises(RuntimeError, match="REDMINE_INTROSPECT_CLIENT_ID"):
             _auth.build_remote_auth()
 
+    def test_reads_introspection_secret_from_file(self, monkeypatch, tmp_path):
+        secret_file = tmp_path / "introspection-secret"
+        secret_file.write_text("file-secret\n", encoding="utf-8")
+
+        monkeypatch.setenv("REDMINE_URL", "https://redmine.example.com")
+        monkeypatch.setenv("REDMINE_MCP_BASE_URL", "http://localhost:3040")
+        monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_ID", "cid")
+        monkeypatch.delenv("REDMINE_INTROSPECT_CLIENT_SECRET", raising=False)
+        monkeypatch.setenv("REDMINE_INTROSPECT_CLIENT_SECRET_FILE", str(secret_file))
+        from redmine_mcp_server import _auth
+
+        importlib.reload(_auth)
+        provider = _auth.build_remote_auth()
+        assert provider.token_verifier.client_secret == "file-secret"
+
     def test_required_scopes_unset_on_verifier(self, monkeypatch):
         """required_scopes intentionally unset — we advertise but don't enforce."""
         monkeypatch.setenv("REDMINE_URL", "https://redmine.example.com")
