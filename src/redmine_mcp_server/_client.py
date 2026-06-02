@@ -98,7 +98,7 @@ if not REDMINE_URL:
         "REDMINE_URL not set. "
         "Please create a .env file in your working directory with REDMINE_URL defined."
     )
-elif REDMINE_AUTH_MODE != "oauth" and not (
+elif REDMINE_AUTH_MODE not in ["oauth", "oauth-proxy"] and not (
     REDMINE_API_KEY or (REDMINE_USERNAME and REDMINE_PASSWORD)
 ):
     logger.warning(

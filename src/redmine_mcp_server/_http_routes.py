@@ -21,8 +21,9 @@ import httpx
 
 from ._client import REDMINE_AUTH_MODE
 from ._env import (
+    get,
     get_health_introspection_ttl_seconds,
-    get_introspection_credentials,
+    get_secret,
 )
 from .server import mcp
 
@@ -44,7 +45,8 @@ async def _probe_introspection_uncached() -> tuple[str, Optional[str]]:
     redmine_url = (os.environ.get("REDMINE_URL") or "").rstrip("/")
     if not redmine_url:
         return "unreachable", "REDMINE_URL not set"
-    client_id, client_secret = get_introspection_credentials()
+    client_id = get("REDMINE_INTROSPECT_CLIENT_ID")
+    client_secret = get_secret("REDMINE_INTROSPECT_CLIENT_SECRET")
     if not (client_id and client_secret):
         return "unreachable", "introspection credentials not configured"
 

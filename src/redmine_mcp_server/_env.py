@@ -1,6 +1,7 @@
 """Environment-variable accessor helpers."""
 
 import os
+from pathlib import Path
 
 
 def _is_true_env(var_name: str, default: str = "false") -> bool:
@@ -59,39 +60,68 @@ def _get_int_env(var_name: str, default: int) -> int:
         return default
 
 
-def get_introspection_credentials() -> tuple[str | None, str | None]:
-    """Return (client_id, client_secret) for the Doorkeeper introspection client.
-
-    Both values are required when REDMINE_AUTH_MODE=oauth. Returns
-    (None, None) if neither is set. Callers that need fail-fast behaviour
-    should use require_introspection_credentials().
-    """
-    client_id = os.getenv("REDMINE_INTROSPECT_CLIENT_ID") or None
-    client_secret = os.getenv("REDMINE_INTROSPECT_CLIENT_SECRET") or None
-    return client_id, client_secret
+def get(var_name: str, default: str | None = None) -> str | None:
+    """Return an environment variable value."""
+    return os.getenv(var_name, default)
 
 
-def require_introspection_credentials() -> tuple[str, str]:
-    """Return (client_id, client_secret) or raise RuntimeError with a clear message.
+def get_secret(var_name: str, file_var_name: str | None = None) -> str | None:
+    """Return a secret from an env var or a Docker/Kubernetes-style file env var."""
+    value = os.getenv(var_name)
+    if value:
+        return value
 
-    Used at OAuth-mode startup so the server fails fast instead of returning
-    401 on every request.
-    """
-    client_id, client_secret = get_introspection_credentials()
-    missing = []
-    if not client_id:
-        missing.append("REDMINE_INTROSPECT_CLIENT_ID")
-    if not client_secret:
-        missing.append("REDMINE_INTROSPECT_CLIENT_SECRET")
-    if missing:
-        raise RuntimeError(
-            "OAuth mode requires Doorkeeper introspection credentials. "
-            f"Missing env var(s): {', '.join(missing)}. "
-            "Register a confidential OAuth client in Redmine and configure "
-            "Doorkeeper's allow_token_introspection block to accept it "
-            "(see docs/oauth-setup.md Step 2 for the walkthrough)."
-        )
-    return client_id, client_secret
+    file_name = os.getenv(file_var_name or f"{var_name}_FILE")
+    if not file_name:
+        return None
+
+    return Path(file_name).read_text(encoding="utf-8").strip()
+
+
+def get_required(
+    var_name: str,
+    *,
+    context: str | None = None,
+    guidance: str | None = None,
+) -> str:
+    """Return a required environment variable or raise a clear RuntimeError."""
+    value = get(var_name)
+    if value:
+        return value
+
+    parts = []
+    if context:
+        parts.append(f"{context} requires {var_name}.")
+    else:
+        parts.append(f"Missing required env var: {var_name}.")
+    if guidance:
+        parts.append(guidance)
+    raise RuntimeError(" ".join(parts))
+
+
+def get_required_secret(
+    var_name: str,
+    *,
+    file_var_name: str | None = None,
+    context: str | None = None,
+    guidance: str | None = None,
+) -> str:
+    """Return a required secret from env or a file env var."""
+    value = get_secret(var_name, file_var_name)
+    if value:
+        return value
+
+    names = (
+        f"{var_name}[_FILE]" if file_var_name is None else f"{var_name}/{file_var_name}"
+    )
+    parts = []
+    if context:
+        parts.append(f"{context} requires {names}.")
+    else:
+        parts.append(f"Missing required secret env var: {names}.")
+    if guidance:
+        parts.append(guidance)
+    raise RuntimeError(" ".join(parts))
 
 
 def get_health_introspection_ttl_seconds() -> int:
