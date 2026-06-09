@@ -1,6 +1,7 @@
 """Environment-variable accessor helpers."""
 
 import os
+from pathlib import Path
 
 
 def _is_true_env(var_name: str, default: str = "false") -> bool:
@@ -57,6 +58,70 @@ def _get_int_env(var_name: str, default: int) -> int:
         return int(os.getenv(var_name, str(default)))
     except (ValueError, TypeError):
         return default
+
+
+def get(var_name: str, default: str | None = None) -> str | None:
+    """Return an environment variable value."""
+    return os.getenv(var_name, default)
+
+
+def get_secret(var_name: str, file_var_name: str | None = None) -> str | None:
+    """Return a secret from an env var or Docker/Kubernetes-style file env var."""
+    value = os.getenv(var_name)
+    if value:
+        return value
+
+    file_name = os.getenv(file_var_name or f"{var_name}_FILE")
+    if not file_name:
+        return None
+
+    return Path(file_name).read_text(encoding="utf-8").strip()
+
+
+def get_required(
+    var_name: str,
+    *,
+    context: str | None = None,
+    guidance: str | None = None,
+) -> str:
+    """Return a required environment variable or raise a clear RuntimeError."""
+    value = get(var_name)
+    if value:
+        return value
+
+    parts = []
+    if context:
+        parts.append(f"{context} requires {var_name}.")
+    else:
+        parts.append(f"Missing required env var: {var_name}.")
+    if guidance:
+        parts.append(guidance)
+    raise RuntimeError(" ".join(parts))
+
+
+def get_required_secret(
+    var_name: str,
+    *,
+    file_var_name: str | None = None,
+    context: str | None = None,
+    guidance: str | None = None,
+) -> str:
+    """Return a required secret from env or a file env var."""
+    value = get_secret(var_name, file_var_name)
+    if value:
+        return value
+
+    names = (
+        f"{var_name}[_FILE]" if file_var_name is None else f"{var_name}/{file_var_name}"
+    )
+    parts = []
+    if context:
+        parts.append(f"{context} requires {names}.")
+    else:
+        parts.append(f"Missing required secret env var: {names}.")
+    if guidance:
+        parts.append(guidance)
+    raise RuntimeError(" ".join(parts))
 
 
 def get_introspection_credentials() -> tuple[str | None, str | None]:

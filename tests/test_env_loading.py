@@ -253,6 +253,26 @@ class TestOAuthIntrospectionEnv:
         with pytest.raises(RuntimeError, match="REDMINE_INTROSPECT_CLIENT_ID"):
             _env.require_introspection_credentials()
 
+    def test_get_required_secret_reads_secret_file(self, monkeypatch, tmp_path):
+        secret_file = tmp_path / "secret"
+        secret_file.write_text("from-file\n", encoding="utf-8")
+        monkeypatch.delenv("REDMINE_MCP_JWT_SIGNING_KEY", raising=False)
+        monkeypatch.setenv("REDMINE_MCP_JWT_SIGNING_KEY_FILE", str(secret_file))
+
+        from redmine_mcp_server import _env
+
+        assert _env.get_required_secret("REDMINE_MCP_JWT_SIGNING_KEY") == "from-file"
+
+    def test_get_required_secret_raises_when_missing(self, monkeypatch):
+        monkeypatch.delenv("REDMINE_MCP_JWT_SIGNING_KEY", raising=False)
+        monkeypatch.delenv("REDMINE_MCP_JWT_SIGNING_KEY_FILE", raising=False)
+
+        import pytest
+        from redmine_mcp_server import _env
+
+        with pytest.raises(RuntimeError, match="REDMINE_MCP_JWT_SIGNING_KEY"):
+            _env.get_required_secret("REDMINE_MCP_JWT_SIGNING_KEY")
+
     def test_health_introspection_ttl_default(self, monkeypatch):
         monkeypatch.delenv("HEALTH_INTROSPECTION_TTL_SECONDS", raising=False)
         import importlib
