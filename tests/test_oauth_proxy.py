@@ -53,7 +53,7 @@ async def test_authenticated_app_mounts_oauth_proxy_under_mcp(monkeypatch, tmp_p
         mcp_post = await client.post("/mcp", json={})
 
     assert root_as.status_code == 200
-    assert resource_as.status_code == 404
+    assert resource_as.status_code == 200
     assert prm.status_code == 200
     assert mounted_prm.status_code == 404
     assert authorize.status_code != 404
@@ -67,6 +67,7 @@ async def test_authenticated_app_mounts_oauth_proxy_under_mcp(monkeypatch, tmp_p
     assert as_body["authorization_endpoint"] == "https://mcp.example/authorize"
     assert as_body["token_endpoint"] == "https://mcp.example/token"
     assert as_body["registration_endpoint"] == "https://mcp.example/register"
+    assert resource_as.json() == as_body
     assert prm_body["authorization_servers"] == ["https://mcp.example/"]
     assert (
         'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource/mcp'
@@ -106,12 +107,13 @@ async def test_authenticated_app_derives_mount_prefix_from_base_url(
 
     assert root_as.status_code == 404
     assert scoped_as.status_code == 200
-    assert resource_scoped_as.status_code == 404
+    assert resource_scoped_as.status_code == 200
     assert prm.status_code == 200
     assert authorize.status_code != 404
     assert register.status_code != 404
     assert mcp_post.status_code == 401
     assert scoped_as.json()["issuer"] == "https://mcp.example/api"
+    assert resource_scoped_as.json() == scoped_as.json()
     assert (
         'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource/api/mcp'
         in mcp_post.headers["www-authenticate"]

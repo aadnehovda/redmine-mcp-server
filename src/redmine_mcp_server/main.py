@@ -48,12 +48,44 @@ def get_version() -> str:
         return "dev"
 
 
+def _oauth_proxy_as_metadata_aliases(auth_provider, routes, mcp_path):
+    """Add temporary resource-scoped AS metadata aliases for older clients."""
+    if auth_provider.__class__.__name__ != "OAuthProxy":
+        return []
+
+    clean_mcp_path = mcp_path.rstrip("/")
+    if not clean_mcp_path or clean_mcp_path == "/":
+        return []
+
+    aliases = []
+    for route in routes:
+        if not isinstance(route, Route):
+            continue
+        route_path = route.path.rstrip("/")
+        if not route_path.startswith("/.well-known/oauth-authorization-server"):
+            continue
+        if route_path.endswith(clean_mcp_path):
+            continue
+
+        aliases.append(
+            Route(
+                path=f"{route_path}{clean_mcp_path}",
+                endpoint=route.endpoint,
+                methods=route.methods,
+                include_in_schema=route.include_in_schema,
+            )
+        )
+
+    return aliases
+
+
 def build_authenticated_app(mcp_instance, auth_provider):
     """Build a mounted ASGI app for authenticated modes."""
     mcp_path = mcp_path_for_http_app()
     mcp_app = mcp_instance.http_app(path=mcp_path, stateless_http=True)
 
     routes = list(auth_provider.get_well_known_routes(mcp_path=mcp_path))
+    routes.extend(_oauth_proxy_as_metadata_aliases(auth_provider, routes, mcp_path))
     routes.extend(
         [
             Route("/health", _http_routes.health_check, methods=["GET"]),
